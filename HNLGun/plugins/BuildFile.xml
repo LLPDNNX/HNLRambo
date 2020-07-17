@@ -1,0 +1,13 @@
+<use name="FWCore/MessageLogger"/>
+<use name="FWCore/ParameterSet"/>
+<use name="FWCore/ServiceRegistry"/>
+<use name="FWCore/Utilities"/>
+<use name="FWCore/Sources"/>
+<use name="GeneratorInterface/LHEInterface"/>
+<use name="GeneratorInterface/Core"/>
+<use name="FWCore/Framework"/>
+<use name="SimDataFormats/GeneratorProducts"/>
+<library name="HNLGunProducer" file="HNLGun.cc">
+    <flags EDM_PLUGIN="1"/>
+</library>
+ 
