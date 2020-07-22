@@ -94,6 +94,11 @@ class ParticleSystem
             return ParticleSystem;
         }
         
+        inline int getPdgId() const
+        {
+            return pdgId_;
+        }
+         
         inline void setCtau(double ctau)
         {
             ctau_ = ctau;
@@ -263,7 +268,7 @@ class HNLGun:
             if (scale>cme) return nullptr;
             
             double pz = std::copysign(
-                std::min(cme/2.,std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.,1.))),
+                std::min(cme/2.,std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.,0.75))),
                 CLHEP::RandFlat::shoot(rngEngine_.get(), -1, 1)
             );
             
@@ -271,7 +276,8 @@ class HNLGun:
             double x2 = -pz/cme+std::sqrt((pz*pz+scale*scale)/cme/cme);
             double x1 = scale*scale/cme/cme/x2;
             
-            if (x2>1 or x1>1) return nullptr;
+            if (x1>0.9 or x2>0.9) return nullptr;
+            if (x1<1e-4 or x2<1e-4) return nullptr;
             
             int nParticles = CLHEP::RandFlat::shootInt(rngEngine_.get(),2,7);
             int nHNL = CLHEP::RandFlat::shootInt(rngEngine_.get(),1,std::min(4,nParticles));
@@ -283,7 +289,7 @@ class HNLGun:
             double massLLP = CLHEP::RandFlat::shoot(rngEngine_.get(), 1, 20)+std::fabs(CLHEP::RandGauss::shoot(rngEngine_.get(),0.,10.)); //in GeV
             double ctauLLP = std::pow(10.,CLHEP::RandFlat::shoot(rngEngine_.get(), -3., 5.)); //in mm
             
-            if (scale<(massLLP*nHNL)) return nullptr;
+            if (scale<(massLLP*nHNL*1.1)) return nullptr;
             
             constexpr std::array<double,3> leptonMasses{{0.511e-3,0.105,1.776}};
             constexpr std::array<double,4> quarkMasses{{4.8e-3,2.3e-3,95.e-3,1.28}};
@@ -316,10 +322,13 @@ class HNLGun:
                 ps->add(ParticleSystem::create(12,1e-6));
             }
        
+            std::vector<ParticleSystemPtr> llps;
+            std::vector<ParticleSystemPtr> displacedParticles;
             for (int i = 0; i < nHNL; ++i)
             {
                 auto llp = ps->add(ParticleSystem::create(9900012,massLLP));
                 llp->setCtau(ctauLLP);
+                llps.push_back(llp);
                 
                 //color connect both particles
                 if (llpDecayType==0)
@@ -332,8 +341,10 @@ class HNLGun:
                 
                     auto p1 = llp->add(ParticleSystem::create(quarkId1,quarkMasses[quarkType1]));
                     p1->setColorTag(100+i);
+                    displacedParticles.push_back(p1);
                     auto p2 = llp->add(ParticleSystem::create(-quarkId2,quarkMasses[quarkType2]));
                     p2->setColorTag(100+i);
+                    displacedParticles.push_back(p2);
                 } 
                 else if (llpDecayType==1) 
                 {
@@ -345,8 +356,11 @@ class HNLGun:
                 
                     auto p1 = llp->add(ParticleSystem::create(quarkId1,quarkMasses[quarkType1]));
                     p1->setColorTag(100+i);
+                    displacedParticles.push_back(p1);
+                    
                     auto p2 = llp->add(ParticleSystem::create(-quarkId2,quarkMasses[quarkType2]));
                     p2->setColorTag(100+i);
+                    displacedParticles.push_back(p2);
                     
                     //add neutrino
                     llp->add(ParticleSystem::create(12));
@@ -369,7 +383,8 @@ class HNLGun:
                     }
                     while (leptonMass>massLLP);
                     
-                    llp->add(ParticleSystem::create(leptonFlavor,leptonMass));
+                    auto lepton = llp->add(ParticleSystem::create(leptonFlavor,leptonMass));
+                    displacedParticles.push_back(lepton);
                     
                     int quarkTypeDown = (2*CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size()))%quarkMasses.size();
                     int quarkTypeUp = (1+2*CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size()))%quarkMasses.size();
@@ -382,15 +397,21 @@ class HNLGun:
                     {
                         auto p1 = llp->add(ParticleSystem::create(quarkIdUp,quarkMasses[quarkTypeUp]));
                         p1->setColorTag(100+i);
+                        displacedParticles.push_back(p1);
+                        
                         auto p2 = llp->add(ParticleSystem::create(-quarkIdDown,quarkMasses[quarkTypeDown]));
                         p2->setColorTag(100+i);
+                        displacedParticles.push_back(p2);
                     }
                     else
                     {
                         auto p1 = llp->add(ParticleSystem::create(-quarkIdUp,quarkMasses[quarkTypeUp]));
                         p1->setColorTag(100+i);
+                        displacedParticles.push_back(p1);
+                        
                         auto p2 = llp->add(ParticleSystem::create(quarkIdDown,quarkMasses[quarkTypeDown]));
                         p2->setColorTag(100+i);
+                        displacedParticles.push_back(p2);
                     }
                 }
                 else if (llpDecayType==3)
@@ -411,14 +432,48 @@ class HNLGun:
                     
                     int leptonSign = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,2)*2-1;
                     
-                    llp->add(ParticleSystem::create((leptonGeneration1*2+11)*leptonSign,leptonMass1));
-                    llp->add(ParticleSystem::create(-(leptonGeneration2*2+11)*leptonSign,leptonMass2));
+                    auto p1 = llp->add(ParticleSystem::create((leptonGeneration1*2+11)*leptonSign,leptonMass1));
+                    displacedParticles.push_back(p1);
+                    
+                    auto p2 = llp->add(ParticleSystem::create(-(leptonGeneration2*2+11)*leptonSign,leptonMass2));
+                    displacedParticles.push_back(p2);
+                    
                     llp->add(ParticleSystem::create(12));
                 }
             }
        
             
             ps->generateRandomMomenta(rngEngine_);
+            
+            //require at least one LLP to be within eta acceptance
+            //and require one LLP within acceptance to have an energy above 10 GeV
+            double minAbsEta = 100.;
+            double maxE = 0.;
+            for (const auto& llp: llps)
+            {
+                double absEta = std::fabs(llp->getP4().Eta());
+                minAbsEta = std::min(minAbsEta,absEta);
+                if (absEta<2.4)
+                {
+                    maxE = std::max(maxE,std::fabs(llp->getP4().E()));
+                }
+            }
+            if (minAbsEta>2.4) return nullptr;
+            if (maxE<10.) return nullptr;
+            
+            
+            //require at least 30% of all displaced particles to be within acceptance
+            int nInAcceptance = 0;
+            for (const auto& particle: displacedParticles)
+            {
+                if (std::fabs(particle->getP4().Eta())<2.4 and particle->getP4().Pt()>10.)
+                {
+                    nInAcceptance+=1;
+                }
+            }
+            if ((1.*nInAcceptance/displacedParticles.size())<0.3) return nullptr;
+            
+            
             
             int nTotalParticles = ps->nParticles();
 
@@ -472,7 +527,6 @@ class HNLGun:
                 product.reset(generate());
             }
             while (not product);
-            
             event.put(std::move(product));
         }
         
