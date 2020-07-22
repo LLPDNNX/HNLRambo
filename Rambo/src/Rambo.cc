@@ -4,7 +4,7 @@
 #include <cmath>
 #include <stdlib.h>
 
-#include "HNLRambo/Rambo/interface/rambo.h"
+#include "HNLRambo/Rambo/interface/Rambo.h"
 
 Rambo::Rambo(size_t seed):
     rndEngine_(seed),
@@ -13,8 +13,8 @@ Rambo::Rambo(size_t seed):
 }
 
 
-vector<std::array<double,4>> Rambo::generate(
-    double et, 
+vector<Rambo4Vector> Rambo::generate(
+    double scale, 
     const std::vector<double>& xm, 
     double& wt
 )
@@ -29,13 +29,13 @@ vector<std::array<double,4>> Rambo::generate(
  *    -- adjusted by hans kuijf, weights are logarithmic (20-08-90)    *
  *                                                                     *
  *    n  = number of particles                                         *
- *    et = total centre-of-mass energy                                 *
+ *    scale = total centre-of-mass energy                                 *
  *    xm = particle masses ( dim=nexternal-nincoming )                 *
  *    p  = particle momenta ( dim=(4,nexternal-nincoming) )            *
  *    wt = weight of the event                                         *
  ***********************************************************************/
   const size_t n = xm.size();
-  std::vector<std::array<double,4>> q{n,{{0.,0.,0.,0.}}}, p{n,{{0.,0.,0.,0.}}};
+  std::vector<Rambo4Vector> q(n), p(n);
   std::vector<double> z(n,0), r(4,0), b(3,0), p2(n,0), xm2(n,0), e(n,0), v(n,0);
   
   
@@ -63,8 +63,8 @@ vector<std::array<double,4>> Rambo::generate(
     if(xm[i]!=0.) nm=nm+1;
     xmt=xmt+std::fabs(xm[i]);
   }
-  if (xmt>et){
-    throw std::runtime_error("Too low energy: "+std::to_string(et)+" needed "+std::to_string(xmt));
+  if (xmt>scale){
+    throw std::runtime_error("Too low energy: "+std::to_string(scale)+" needed "+std::to_string(xmt));
 
   }
 // the parameter values are now accepted
@@ -94,7 +94,7 @@ vector<std::array<double,4>> Rambo::generate(
     b[k-1]=-r[k]/rmas;
   double g=r[0]/rmas;
   double a=1./(1.+g);
-  double x=et/rmas;
+  double x=scale/rmas;
 
 // transform the q's conformally into the p's
   for(size_t i=0; i< n;i++){
@@ -106,7 +106,7 @@ vector<std::array<double,4>> Rambo::generate(
 
 // calculate weight and possible warnings
   wt=po2log;
-  if(n!=2) wt=(2.*n-4.)*log(et)+z[n-1];
+  if(n!=2) wt=(2.*n-4.)*log(scale)+z[n-1];
   if(wt<-180.){
     std::cout << "Too small wt, risk for underflow: " << wt << std::endl;
   }
@@ -121,16 +121,16 @@ vector<std::array<double,4>> Rambo::generate(
   }
 
 // massive particles: rescale the momenta by a factor x
-  double xmax=sqrt(1.-pow(xmt/et, 2));
+  double xmax=sqrt(1.-pow(xmt/scale, 2));
   for(size_t i=0;i < n; i++){
     xm2[i]=pow(xm[i],2);
     p2[i]=pow(p[i][0],2);
   }
   int iter=0;
   x=xmax;
-  double accu=et*acc;
+  double accu=scale*acc;
   while(true){
-    double f0=-et;
+    double f0=-scale;
     double g0=0.;
     double x2=x*x;
     for(size_t i=0; i < n; i++){
@@ -160,7 +160,7 @@ vector<std::array<double,4>> Rambo::generate(
     wt2=wt2*v[i]/e[i];
     wt3=wt3+pow(v[i],2)/e[i];
   }
-  double wtm=(2.*n-3.)*log(x)+log(wt2/wt3*et);
+  double wtm=(2.*n-3.)*log(x)+log(wt2/wt3*scale);
 
 // return for  weighted massive momenta
   wt=wt+wtm;

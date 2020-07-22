@@ -8,8 +8,6 @@
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/Sources/interface/ProducerSourceBase.h"
 
-#include "FWCore/Concurrency/interface/FunctorTask.h"
-
 #include "FWCore/ParameterSet/interface/FileInPath.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 
@@ -24,8 +22,20 @@
  
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/Utilities/interface/RandomNumberGenerator.h"
+
+#include "CLHEP/Random/RandomEngine.h"
+#include "CLHEP/Random/MTwistEngine.h"
+#include "CLHEP/Random/RandFlat.h"
+#include "CLHEP/Random/RandGauss.h"
+
+#include "HNLRambo/Rambo/interface/Rambo.h"
  
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
+
+#include "TLorentzVector.h"
+
+#include <ctime>
+#include <vector>
 
 /*
 typical HNL event
@@ -46,21 +56,173 @@ typical HNL event
         3  1    4    4  502    0 +1.3117896098e+00 -5.2509093443e+00 -1.7235399759e+00 5.6809886438e+00 1.0100000000e-01 0.0000e+00 -1.0000e+00
        -4  1    4    4    0  502 +5.0869229945e+00 -1.3096547415e-01 +1.1896069424e+00 5.3779180158e+00 1.2700000000e+00 0.0000e+00 1.0000e+00
 */
+
+class ParticleSystem;
+typedef std::shared_ptr<ParticleSystem> ParticleSystemPtr;
+
+class ParticleSystem
+{       
+    protected:
+        int pdgId_;
+        double ctau_;
+        int colorTag_;
+        TLorentzVector momentum_;
+        std::vector<ParticleSystemPtr> subsystems_;
+        
+        ParticleSystem(
+            int pdgId,
+            TLorentzVector momentum = TLorentzVector(0.,0.,0.,0.)
+        ):
+            pdgId_(pdgId),
+            ctau_(0),
+            colorTag_(0),
+            momentum_(momentum)
+        {
+        }
+        
+    public:        
+        static ParticleSystemPtr create(int pdgId, double mass=1e-6)
+        {
+            TLorentzVector momentum;
+            momentum.SetXYZM(0,0,0,mass);
+            return std::shared_ptr<ParticleSystem>(new ParticleSystem(pdgId,momentum));
+        }
+        
+        const ParticleSystemPtr& add(const ParticleSystemPtr& ParticleSystem)
+        {
+            subsystems_.push_back(ParticleSystem);
+            return ParticleSystem;
+        }
+        
+        inline void setCtau(double ctau)
+        {
+            ctau_ = ctau;
+        }
+        
+        inline void setColorTag(int colorTag)
+        {
+            colorTag_ = colorTag;
+        }
+        
+        inline double mass() const
+        {
+            return momentum_.Mag();
+        }
+        
+        inline void setP4(const TLorentzVector& momentum)
+        {
+            momentum_ = momentum;
+        }
+        
+        inline TLorentzVector getP4() const
+        {
+            return momentum_;
+        }
+        
+        void generateRandomMomenta(const std::shared_ptr<CLHEP::HepRandomEngine>& rngEngine_)
+        {
+            if (subsystems_.size()==0)
+            {
+                return;
+            }
+            Rambo rambo(CLHEP::RandFlat::shootInt(rngEngine_.get(),1e12));
+            
+            std::vector<double> masses(subsystems_.size(),0);
+            for (size_t i = 0; i < masses.size(); ++i)
+            {
+                masses[i] = subsystems_[i]->mass();
+            }
+            
+            double weight = 0;
+            std::vector<Rambo4Vector> randomMomenta = rambo.generate(
+                this->mass(), //on-shell
+                masses,
+                weight
+            );
+            
+            
+            //randomize rotation
+            constexpr double PI = std::atan(1.0)*4;
+            double rotateX = CLHEP::RandFlat::shoot(rngEngine_.get(),0,2*PI);
+            double rotateY = CLHEP::RandFlat::shoot(rngEngine_.get(),0,2*PI);
+            double rotateZ = CLHEP::RandFlat::shoot(rngEngine_.get(),0,2*PI);
+            
+            TVector3 boostVector = momentum_.BoostVector();
+            
+            for (size_t i = 0; i < randomMomenta.size(); ++i)
+            {
+                TLorentzVector randomMomentum = randomMomenta[i].toLorentzVector();
+                randomMomentum.RotateX(rotateX);
+                randomMomentum.RotateY(rotateY);
+                randomMomentum.RotateZ(rotateZ);
+                
+                randomMomentum.Boost(boostVector);
+                
+                subsystems_[i]->setP4(randomMomentum);
+                subsystems_[i]->generateRandomMomenta(rngEngine_); //call recursively
+            }
+        }
+        
+        int nParticles() const
+        {
+            int n = 1;
+            for (size_t i = 0; i < subsystems_.size(); ++i)
+            {
+                n += subsystems_[i]->nParticles();
+            }
+            return n;
+        }
+        
+        void fillLHE(lhef::HEPEUP& hepeup, size_t& index, const std::array<int,2>& motherIndices=std::array<int,2>{{0,0}})
+        {
+            hepeup.IDUP[index] = pdgId_; // particle ID
+            hepeup.ISTUP[index] = subsystems_.size()>0 ? 2 : 1; //status code (-1 incomming, +1 outgoing, +2 intermediate resonance)
+            
+            hepeup.MOTHUP[index] = {motherIndices[0],motherIndices[1]}; // mother indices (0 = no mother)
+            hepeup.ICOLUP[index] = {
+                pdgId_>0 ? colorTag_ : 0,
+                pdgId_<0 ? colorTag_ : 0,
+            }; //color tag to indicate color flow ({particle, antiparticle})
+
+            
+            hepeup.PUP[index][0]= momentum_.Px(); //px
+            hepeup.PUP[index][1]= momentum_.Py(); //py
+            hepeup.PUP[index][2]= momentum_.Pz(); //pz
+            hepeup.PUP[index][3]= momentum_.E(); //E
+            hepeup.PUP[index][4]= momentum_.Mag(); //mass
+            hepeup.VTIMUP[index] = ctau_; //ctau in mm
+            hepeup.SPINUP[index] = 0.; //helicity
+            
+            int motherIndex = index+1; //counts from 1
+            
+            index+=1;
+            
+            for (size_t i = 0; i < subsystems_.size(); ++i)
+            {
+                subsystems_[i]->fillLHE(hepeup,index,{{motherIndex,motherIndex}});
+            }
+        }
+};
+
+
+        
+
 class HNLGun: 
     public edm::ProducerSourceBase
 {
     private:
         const double cme = 13000;
     
-        
+        std::shared_ptr<CLHEP::HepRandomEngine> rngEngine_;
+        Rambo rambo_;
         
     public:
         explicit HNLGun(const edm::ParameterSet& iConfig,  const edm::InputSourceDescription& desc):
-            edm::ProducerSourceBase(iConfig, desc, false)
+            edm::ProducerSourceBase(iConfig, desc, false),
+            rngEngine_(new CLHEP::MTwistEngine(time(NULL)))
         {
-            //setNewRun();
-            //setNewLumi();
- 
+            //source is not allowed to use the RandomNumberService so just create an engine
+            
             produces<LHERunInfoProduct, edm::Transition::BeginRun>();
             produces<LHEEventProduct>();
         }
@@ -93,18 +255,149 @@ class HNLGun:
             run.put(std::move(runInfo));
         }
         
-        
-        void produce(edm::Event& event) override
+        LHEEventProduct* generate()
         {
+            double scale = std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.5,0.5));
             
+            if (scale>cme) return nullptr;
             
-            double x1 = 0.1;
-            double x2 = 0.1;
-            double scale = std::sqrt(x1*x2)*cme;
+            double pz = std::copysign(
+                std::min(cme/2.,std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.,1.))),
+                CLHEP::RandFlat::shoot(rngEngine_.get(), -1, 1)
+            );
             
+            //take only positive solution
+            double x2 = -pz/cme+std::sqrt((pz*pz+scale*scale)/cme/cme);
+            double x1 = scale*scale/cme/cme/x2;
             
+            if (x2>1 or x1>1) return nullptr;
+            
+            int nParticles = CLHEP::RandFlat::shootInt(rngEngine_.get(),2,7);
+            int nHNL = CLHEP::RandFlat::shootInt(rngEngine_.get(),1,std::min(4,nParticles));
+            int nNonLLP = nParticles-nHNL;
+            
+            //0: qqbar; 1: neutrino+qqbar; 2: lepton+qqbar; 3: ll+nu
+            int llpDecayType = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,4);
+            
+            double massLLP = CLHEP::RandFlat::shoot(rngEngine_.get(), 1, 20)+std::fabs(CLHEP::RandGauss::shoot(rngEngine_.get(),0.,10.)); //in GeV
+            double ctauLLP = std::pow(10.,CLHEP::RandFlat::shoot(rngEngine_.get(), -3., 5.)); //in mm
+            
+            if (scale<(massLLP*nHNL)) return nullptr;
+            
+            constexpr std::array<double,3> leptonMasses{{0.511e-3,0.105,1.776}};
+            
+            ParticleSystemPtr ps = ParticleSystem::create(1000022,scale);
+            ps->setP4(TLorentzVector(0,0,pz,std::sqrt(scale*scale+pz*pz)));
+            for (int i = 0; i < nParticles; ++i)
+            {
+                if (i<nNonLLP)
+                {
+                    //add random prompt massless particle
+                
+                    int colorTag = i/2+10; //color connect consecutive pair of particles
+                    int pdgId = 2*(i%2)-1; //add alternating down quark/antiquark
+                    
+                    if (nNonLLP%2==1 and i==(nNonLLP-1))
+                    {
+                        //add neutrino in case of odd number of particles
+                        ps->add(ParticleSystem::create(12,1e-6));
+                    }
+                    else
+                    {
+                        auto particle = ps->add(ParticleSystem::create(pdgId,4.7e-3));
+                        particle->setColorTag(colorTag);
+                    }
+                }
+                else
+                {
+                    auto llp = ps->add(ParticleSystem::create(9900012,massLLP));
+                    llp->setCtau(ctauLLP);
+                    
+                    //color connect both particles
+                    if (llpDecayType==0)
+                    {
+                        auto p1 = llp->add(ParticleSystem::create(2,4.7e-3));
+                        p1->setColorTag(100+i);
+                        auto p2 = llp->add(ParticleSystem::create(-2,4.7e-3));
+                        p2->setColorTag(100+i);
+                    } 
+                    else if (llpDecayType==1) 
+                    {
+                        auto p1 = llp->add(ParticleSystem::create(2,4.7e-3));
+                        p1->setColorTag(100+i);
+                        auto p2 = llp->add(ParticleSystem::create(-2,4.7e-3));
+                        p2->setColorTag(100+i);
+                        
+                        //add neutrino
+                        llp->add(ParticleSystem::create(12));
+                    }
+                    else if (llpDecayType==2)
+                    {
+                    
+                        int leptonGeneration = 0;
+                        int leptonFlavor = 0;
+                        double leptonMass = 0;
+                        
+                        do 
+                        {
+                            leptonGeneration = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,3);
+                            leptonFlavor = std::copysign(
+                                leptonGeneration*2+11,
+                                CLHEP::RandFlat::shoot(rngEngine_.get(),-1,1)
+                            );
+                            leptonMass = leptonMasses[leptonGeneration];
+                        }
+                        while (leptonMass>massLLP);
+                        
+                        llp->add(ParticleSystem::create(leptonFlavor,leptonMass));
+                        
+                        //match EM charge
+                        if (leptonFlavor>0)
+                        {
+                            auto p1 = llp->add(ParticleSystem::create(2,2.2e-3));
+                            p1->setColorTag(100+i);
+                            auto p2 = llp->add(ParticleSystem::create(-1,4.7e-3));
+                            p2->setColorTag(100+i);
+                        }
+                        else
+                        {
+                            auto p1 = llp->add(ParticleSystem::create(1,4.7e-3));
+                            p1->setColorTag(100+i);
+                            auto p2 = llp->add(ParticleSystem::create(-2,2.2e-3));
+                            p2->setColorTag(100+i);
+                        }
+                    }
+                    else if (llpDecayType==3)
+                    {
+                    
+                        int leptonGeneration = 0;
+                        int leptonFlavor = 0;
+                        double leptonMass = 0;
+                        
+                        do 
+                        {
+                            leptonGeneration = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,3);
+                            leptonFlavor = std::copysign(
+                                leptonGeneration*2+11,
+                                CLHEP::RandFlat::shoot(rngEngine_.get(),-1,1)
+                            );
+                            leptonMass = leptonMasses[leptonGeneration];
+                        }
+                        while ((leptonMass*2)>massLLP);
+                        
+                        llp->add(ParticleSystem::create(leptonFlavor,leptonMass));
+                        llp->add(ParticleSystem::create(-leptonFlavor,leptonMass));
+                        llp->add(ParticleSystem::create(12));
+                    }
+                }
+            }
+            
+            ps->generateRandomMomenta(rngEngine_);
+            
+            int nTotalParticles = ps->nParticles();
+
             lhef::HEPEUP hepeup;
-            hepeup.resize(4); //number of particles
+            hepeup.resize(nTotalParticles+2); //number of particles
             hepeup.AQCDUP = 0.12; //alphaS
             hepeup.AQEDUP = 1./137.; //alphaEW
             hepeup.IDPRUP = 1; //process ID
@@ -134,34 +427,26 @@ class HNLGun:
             hepeup.PUP[1][4]= 0.; //mass
             hepeup.VTIMUP[1] = 0.; //ctau in mm
             hepeup.SPINUP[1] = 0.; //helicity
-
             
-            //per particle info
-            hepeup.IDUP[2] = 1; // particle ID
-            hepeup.ISTUP[2] = 1; //status code (-1 incomming, +1 outgoing, +2 intermediate resonance)
-            hepeup.MOTHUP[2] = {1,2}; // mother indices (0 = no mother)
-            hepeup.ICOLUP[2] = {2,0}; //color tag to indicate color flow ({particle, antiparticle})
-            hepeup.PUP[2][0]= -scale/2.; //px
-            hepeup.PUP[2][1]= 0.; //py
-            hepeup.PUP[2][2]= hepeup.PUP[0][2]+hepeup.PUP[1][2]; //pz
-            hepeup.PUP[2][3]= scale/2.; //E
-            hepeup.PUP[2][4]= 0.; //mass
-            hepeup.VTIMUP[2] = 1.; //ctau in mm
-            hepeup.SPINUP[2] = 0.; //helicity
-            
-            hepeup.IDUP[3] = -1; // particle ID
-            hepeup.ISTUP[3] = 1; //status code (-1 incomming, +1 outgoing, +2 intermediate resonance)
-            hepeup.MOTHUP[3] = {1,2}; // mother indices (0 = no mother)
-            hepeup.ICOLUP[3] = {0,2}; //color tag to indicate color flow ({particle, antiparticle})
-            hepeup.PUP[3][0]= scale/2.; //px
-            hepeup.PUP[3][1]= 0.; //py
-            hepeup.PUP[3][2]= hepeup.PUP[0][2]+hepeup.PUP[1][2]; //pz
-            hepeup.PUP[3][3]= scale/2.; //E
-            hepeup.PUP[3][4]= 0.; //mass
-            hepeup.VTIMUP[3] = 1.; //ctau in mm
-            hepeup.SPINUP[3] = 0.; //helicity
+            size_t index = 2;
+            ps->fillLHE(hepeup, index, {{1,2}});
 
-            std::unique_ptr<LHEEventProduct> product(new LHEEventProduct(hepeup,1.0));
+            LHEEventProduct* product = new LHEEventProduct(hepeup,1.0);
+            product->addWeight(gen::WeightsInfo("ctau",ctauLLP));
+            product->addWeight(gen::WeightsInfo("llpmass",massLLP));
+            
+            return product;
+        }
+        
+        void produce(edm::Event& event) override
+        {   
+            std::unique_ptr<LHEEventProduct> product(nullptr);
+            do
+            {
+                product.reset(generate());
+            }
+            while (not product);
+            
             event.put(std::move(product));
         }
         

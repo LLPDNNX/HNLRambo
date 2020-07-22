@@ -1,4 +1,5 @@
-#include "HNLRambo/Rambo/interface/rambo.h"
+#include "HNLRambo/Rambo/interface/Rambo.h"
+#include "HNLRambo/Rambo/interface/Rambo4Vector.h"
 
 #include <iostream>
 
@@ -9,7 +10,7 @@ int main()
     for (size_t t = 0; t <10; ++t)
     {
         double weight = 0;
-        std::vector<std::array<double,4>> momenta = rambo.generate(10.,std::vector<double>{{1.,2.,3.}},weight);
+        std::vector<Rambo4Vector> momenta = rambo.generate(10.,std::vector<double>{{1.,2.,3.}},weight);
         std::cout<<"w="<<weight<<std::endl;
         
         std::array<double,4> sum{{0,0,0,0}};

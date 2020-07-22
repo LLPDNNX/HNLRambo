@@ -1,5 +1,9 @@
-#ifndef HNLRambo_Rambo_rambo_h
-#define HNLRambo_Rambo_rambo_h
+#ifndef HNLRambo_Rambo_Rambo_h
+#define HNLRambo_Rambo_Rambo_h
+
+#include "HNLRambo/Rambo/interface/Rambo4Vector.h"
+
+#include "TLorentzVector.h"
 
 #include <vector>
 #include <random>
@@ -12,6 +16,8 @@ class Rambo
 {
     public:
         typedef std::mt19937 RandomEngine;
+       
+       
     protected:
         RandomEngine rndEngine_;
         std::uniform_real_distribution<double> dist_;
@@ -23,8 +29,8 @@ class Rambo
         
     public:
         Rambo(size_t seed=12345);
-        std::vector<std::array<double,4>> generate(
-            double et, 
+        std::vector<Rambo4Vector> generate(
+            double scale, 
             const std::vector<double>& xm,
             double& wt
         );
