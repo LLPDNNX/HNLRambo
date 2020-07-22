@@ -257,8 +257,9 @@ class HNLGun:
         
         LHEEventProduct* generate()
         {
-            double scale = std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.5,0.5));
+            double scale = std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.5,0.25));
             
+            if (scale<60.) return nullptr;
             if (scale>cme) return nullptr;
             
             double pz = std::copysign(
@@ -285,112 +286,137 @@ class HNLGun:
             if (scale<(massLLP*nHNL)) return nullptr;
             
             constexpr std::array<double,3> leptonMasses{{0.511e-3,0.105,1.776}};
+            constexpr std::array<double,4> quarkMasses{{4.8e-3,2.3e-3,95.e-3,1.28}};
             
             ParticleSystemPtr ps = ParticleSystem::create(1000022,scale);
             ps->setP4(TLorentzVector(0,0,pz,std::sqrt(scale*scale+pz*pz)));
-            for (int i = 0; i < nParticles; ++i)
+            for (int i = 0; i < (nNonLLP/2); ++i)
             {
-                if (i<nNonLLP)
-                {
-                    //add random prompt massless particle
+                int quarkType1 = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size());
+                int quarkType2 = (quarkType1+2*CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size()))%quarkMasses.size();
                 
-                    int colorTag = i/2+10; //color connect consecutive pair of particles
-                    int pdgId = 2*(i%2)-1; //add alternating down quark/antiquark
+                int quarkId1 = (quarkType1+1);
+                int quarkId2 = (quarkType2+1);
+                
+                auto p1 = ps->add(ParticleSystem::create(
+                    quarkId1,
+                    quarkMasses[quarkType1]
+                ));
+                p1->setColorTag(i+10);
+                auto p2 = ps->add(ParticleSystem::create(
+                    -quarkId2,
+                    quarkMasses[quarkType2]
+                ));
+                p2->setColorTag(i+10);
+            }
+
+            if (nNonLLP%2==1)
+            {
+                //add neutrino in case of odd number of particles
+                ps->add(ParticleSystem::create(12,1e-6));
+            }
+       
+            for (int i = 0; i < nHNL; ++i)
+            {
+                auto llp = ps->add(ParticleSystem::create(9900012,massLLP));
+                llp->setCtau(ctauLLP);
+                
+                //color connect both particles
+                if (llpDecayType==0)
+                {
+                    int quarkType1 = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size());
+                    int quarkType2 = (quarkType1+2*CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size()))%quarkMasses.size();
                     
-                    if (nNonLLP%2==1 and i==(nNonLLP-1))
+                    int quarkId1 = (quarkType1+1);
+                    int quarkId2 = (quarkType2+1);
+                
+                    auto p1 = llp->add(ParticleSystem::create(quarkId1,quarkMasses[quarkType1]));
+                    p1->setColorTag(100+i);
+                    auto p2 = llp->add(ParticleSystem::create(-quarkId2,quarkMasses[quarkType2]));
+                    p2->setColorTag(100+i);
+                } 
+                else if (llpDecayType==1) 
+                {
+                    int quarkType1 = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size());
+                    int quarkType2 = (quarkType1+2*CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size()))%quarkMasses.size();
+                    
+                    int quarkId1 = (quarkType1+1);
+                    int quarkId2 = (quarkType2+1);
+                
+                    auto p1 = llp->add(ParticleSystem::create(quarkId1,quarkMasses[quarkType1]));
+                    p1->setColorTag(100+i);
+                    auto p2 = llp->add(ParticleSystem::create(-quarkId2,quarkMasses[quarkType2]));
+                    p2->setColorTag(100+i);
+                    
+                    //add neutrino
+                    llp->add(ParticleSystem::create(12));
+                }
+                else if (llpDecayType==2)
+                {
+                
+                    int leptonGeneration = 0;
+                    int leptonFlavor = 0;
+                    double leptonMass = 0;
+                    
+                    do 
                     {
-                        //add neutrino in case of odd number of particles
-                        ps->add(ParticleSystem::create(12,1e-6));
+                        leptonGeneration = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,leptonMasses.size());
+                        leptonFlavor = std::copysign(
+                            leptonGeneration*2+11,
+                            CLHEP::RandFlat::shoot(rngEngine_.get(),-1,1)
+                        );
+                        leptonMass = leptonMasses[leptonGeneration];
+                    }
+                    while (leptonMass>massLLP);
+                    
+                    llp->add(ParticleSystem::create(leptonFlavor,leptonMass));
+                    
+                    int quarkTypeDown = (2*CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size()))%quarkMasses.size();
+                    int quarkTypeUp = (1+2*CLHEP::RandFlat::shootInt(rngEngine_.get(),0,quarkMasses.size()))%quarkMasses.size();
+                    
+                    int quarkIdDown = (quarkTypeDown+1);
+                    int quarkIdUp = (quarkTypeUp+1);
+                    
+                    //match EM charge
+                    if (leptonFlavor>0)
+                    {
+                        auto p1 = llp->add(ParticleSystem::create(quarkIdUp,quarkMasses[quarkTypeUp]));
+                        p1->setColorTag(100+i);
+                        auto p2 = llp->add(ParticleSystem::create(-quarkIdDown,quarkMasses[quarkTypeDown]));
+                        p2->setColorTag(100+i);
                     }
                     else
                     {
-                        auto particle = ps->add(ParticleSystem::create(pdgId,4.7e-3));
-                        particle->setColorTag(colorTag);
+                        auto p1 = llp->add(ParticleSystem::create(-quarkIdUp,quarkMasses[quarkTypeUp]));
+                        p1->setColorTag(100+i);
+                        auto p2 = llp->add(ParticleSystem::create(quarkIdDown,quarkMasses[quarkTypeDown]));
+                        p2->setColorTag(100+i);
                     }
                 }
-                else
+                else if (llpDecayType==3)
                 {
-                    auto llp = ps->add(ParticleSystem::create(9900012,massLLP));
-                    llp->setCtau(ctauLLP);
+                    int leptonGeneration1 = 0;
+                    int leptonGeneration2 = 0;
+                    double leptonMass1 = 0;
+                    double leptonMass2 = 0;
                     
-                    //color connect both particles
-                    if (llpDecayType==0)
+                    do 
                     {
-                        auto p1 = llp->add(ParticleSystem::create(2,4.7e-3));
-                        p1->setColorTag(100+i);
-                        auto p2 = llp->add(ParticleSystem::create(-2,4.7e-3));
-                        p2->setColorTag(100+i);
-                    } 
-                    else if (llpDecayType==1) 
-                    {
-                        auto p1 = llp->add(ParticleSystem::create(2,4.7e-3));
-                        p1->setColorTag(100+i);
-                        auto p2 = llp->add(ParticleSystem::create(-2,4.7e-3));
-                        p2->setColorTag(100+i);
-                        
-                        //add neutrino
-                        llp->add(ParticleSystem::create(12));
+                        leptonGeneration1 = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,leptonMasses.size());
+                        leptonGeneration2 = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,leptonMasses.size());
+                        leptonMass1 = leptonMasses[leptonGeneration1];
+                        leptonMass2 = leptonMasses[leptonGeneration2];
                     }
-                    else if (llpDecayType==2)
-                    {
+                    while ((leptonMass1+leptonMass2)>massLLP);
                     
-                        int leptonGeneration = 0;
-                        int leptonFlavor = 0;
-                        double leptonMass = 0;
-                        
-                        do 
-                        {
-                            leptonGeneration = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,3);
-                            leptonFlavor = std::copysign(
-                                leptonGeneration*2+11,
-                                CLHEP::RandFlat::shoot(rngEngine_.get(),-1,1)
-                            );
-                            leptonMass = leptonMasses[leptonGeneration];
-                        }
-                        while (leptonMass>massLLP);
-                        
-                        llp->add(ParticleSystem::create(leptonFlavor,leptonMass));
-                        
-                        //match EM charge
-                        if (leptonFlavor>0)
-                        {
-                            auto p1 = llp->add(ParticleSystem::create(2,2.2e-3));
-                            p1->setColorTag(100+i);
-                            auto p2 = llp->add(ParticleSystem::create(-1,4.7e-3));
-                            p2->setColorTag(100+i);
-                        }
-                        else
-                        {
-                            auto p1 = llp->add(ParticleSystem::create(1,4.7e-3));
-                            p1->setColorTag(100+i);
-                            auto p2 = llp->add(ParticleSystem::create(-2,2.2e-3));
-                            p2->setColorTag(100+i);
-                        }
-                    }
-                    else if (llpDecayType==3)
-                    {
+                    int leptonSign = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,2)*2-1;
                     
-                        int leptonGeneration = 0;
-                        int leptonFlavor = 0;
-                        double leptonMass = 0;
-                        
-                        do 
-                        {
-                            leptonGeneration = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,3);
-                            leptonFlavor = std::copysign(
-                                leptonGeneration*2+11,
-                                CLHEP::RandFlat::shoot(rngEngine_.get(),-1,1)
-                            );
-                            leptonMass = leptonMasses[leptonGeneration];
-                        }
-                        while ((leptonMass*2)>massLLP);
-                        
-                        llp->add(ParticleSystem::create(leptonFlavor,leptonMass));
-                        llp->add(ParticleSystem::create(-leptonFlavor,leptonMass));
-                        llp->add(ParticleSystem::create(12));
-                    }
+                    llp->add(ParticleSystem::create((leptonGeneration1*2+11)*leptonSign,leptonMass1));
+                    llp->add(ParticleSystem::create(-(leptonGeneration2*2+11)*leptonSign,leptonMass2));
+                    llp->add(ParticleSystem::create(12));
                 }
             }
+       
             
             ps->generateRandomMomenta(rngEngine_);
             
