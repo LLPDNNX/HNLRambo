@@ -5,12 +5,14 @@ process = cms.Process('GEN')
 process.load('Configuration.StandardSequences.Services_cff')
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(10)
+    input = cms.untracked.int32(100)
 )
 
 process.options = cms.untracked.PSet()
 
 process.source = cms.Source("HNLGun")
+
+process.writer = cms.EDAnalyzer("LHEWriter")
     
 process.generator = cms.EDFilter("Pythia8HadronizerFilter",
     PythiaParameters = cms.PSet(
@@ -57,7 +59,7 @@ process.generator = cms.EDFilter("Pythia8HadronizerFilter",
     pythiaPylistVerbosity = cms.untracked.int32(1)
 )
 
-process.gen_step = cms.Path(process.generator)
+process.gen_step = cms.Path(process.writer*process.generator)
 
 process.output = cms.OutputModule("PoolOutputModule",
     SelectEvents = cms.untracked.PSet(
