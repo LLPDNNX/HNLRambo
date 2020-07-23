@@ -59,6 +59,9 @@ process.generator = cms.EDFilter("Pythia8HadronizerFilter",
     pythiaPylistVerbosity = cms.untracked.int32(1)
 )
 
+#process.displacedGenJetFilter = cms.EDFilter("DisplacedGenJetFilter",
+
+
 process.gen_step = cms.Path(process.writer*process.generator)
 
 process.output = cms.OutputModule("PoolOutputModule",

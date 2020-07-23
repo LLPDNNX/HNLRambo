@@ -198,6 +198,10 @@ class ParticleSystem
             hepeup.VTIMUP[index] = ctau_; //ctau in mm
             hepeup.SPINUP[index] = 0.; //helicity
             
+            //set fermions to be always left-handed; antifermions right-handed
+            if (pdgId_>=1 and pdgId_<=16) hepeup.SPINUP[index] = pdgId_>0 ? -1 : 1;
+            
+            
             int motherIndex = index+1; //counts from 1
             
             index+=1;
@@ -524,7 +528,14 @@ class HNLGun:
             std::unique_ptr<LHEEventProduct> product(nullptr);
             do
             {
-                product.reset(generate());
+                try
+                {
+                    product.reset(generate());
+                } 
+                catch (...)
+                {
+                    product.reset(nullptr);
+                }
             }
             while (not product);
             event.put(std::move(product));

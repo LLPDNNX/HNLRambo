@@ -6,9 +6,17 @@
 <use name="GeneratorInterface/LHEInterface"/>
 <use name="GeneratorInterface/Core"/>
 <use name="FWCore/Framework"/>
+<use name="DataFormats/Common"/>
+<use name="SimGeneral/HepPDTRecord"/>
 <use name="SimDataFormats/GeneratorProducts"/>
 <use name="HNLRambo/Rambo"/>
+<use name="DataFormats/Candidate"/>
+<use name="DataFormats/HepMCCandidate"/>
+<use name="DataFormats/JetReco"/>
+<use name="root"/>
 <library name="HNLGunProducer" file="HNLGun.cc">
     <flags EDM_PLUGIN="1"/>
 </library>
- 
+<library name="DisplacedGenJetFilter" file="DisplacedGenJetFilter.cc">
+    <flags EDM_PLUGIN="1"/>
+</library>

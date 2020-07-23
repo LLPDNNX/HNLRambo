@@ -108,10 +108,10 @@ vector<Rambo4Vector> Rambo::generate(
   wt=po2log;
   if(n!=2) wt=(2.*n-4.)*log(scale)+z[n-1];
   if(wt<-180.){
-    std::cout << "Too small wt, risk for underflow: " << wt << std::endl;
+    throw std::runtime_error("Too small wt, risk for underflow");
   }
   if(wt> 174.){
-    std::cout << "Too large wt, risk for overflow: " << wt << std::endl;
+    throw std::runtime_error("Too large wt, risk for overflow");
   }
 
 // return for weighted massless momenta
@@ -141,7 +141,7 @@ vector<Rambo4Vector> Rambo::generate(
     if(abs(f0)<=accu) break;
     iter=iter+1;
     if(iter>itmax){
-      std::cout << "Too many iterations without desired accuracy: " << itmax << std::endl;
+      throw std::runtime_error("Too many iterations without desired accuracy");
       break;
     }
     x=x-f0/(x*g0);
@@ -165,11 +165,11 @@ vector<Rambo4Vector> Rambo::generate(
 // return for  weighted massive momenta
   wt=wt+wtm;
   if(wt<-180.){
-    std::cout << "Too small wt, risk for underflow: " << wt << std::endl;
+    throw std::runtime_error("Too small wt, risk for underflow");
     
   }
   if(wt> 174.){
-    std::cout << "Too large wt, risk for overflow: " << wt << std::endl;
+    throw std::runtime_error("Too large wt, risk for overflow");
   }
 // return log of weight
   return p;
