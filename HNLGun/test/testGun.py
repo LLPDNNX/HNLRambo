@@ -10,7 +10,9 @@ process.maxEvents = cms.untracked.PSet(
 
 process.options = cms.untracked.PSet()
 
-process.source = cms.Source("HNLGun")
+process.source = cms.Source("EmptySource")
+
+process.hnlgun = cms.EDProducer("HNLGun")
 
 process.writer = cms.EDAnalyzer("LHEWriter")
     
@@ -62,7 +64,7 @@ process.generator = cms.EDFilter("Pythia8HadronizerFilter",
 #process.displacedGenJetFilter = cms.EDFilter("DisplacedGenJetFilter",
 
 
-process.gen_step = cms.Path(process.writer*process.generator)
+process.gen_step = cms.Path(process.hnlgun*process.writer*process.generator)
 
 process.output = cms.OutputModule("PoolOutputModule",
     SelectEvents = cms.untracked.PSet(

@@ -221,18 +221,20 @@ class HNLGun:
 {
     private:
         const double cme = 13000;
-    
+        
         std::shared_ptr<CLHEP::HepRandomEngine> rngEngine_;
         Rambo rambo_;
+        
         
     public:
         explicit HNLGun(const edm::ParameterSet& iConfig,  const edm::InputSourceDescription& desc):
             edm::ProducerSourceBase(iConfig, desc, false),
+            //source is not allowed to use the RandomNumberService so just create an engine
             rngEngine_(new CLHEP::MTwistEngine(time(NULL)))
         {
-            //source is not allowed to use the RandomNumberService so just create an engine
+
             
-            produces<LHERunInfoProduct, edm::Transition::BeginRun>();
+            produces<LHERunInfoProduct,edm::InRun>();
             produces<LHEEventProduct>();
         }
         
@@ -244,6 +246,7 @@ class HNLGun:
         {
             return true;
         }
+        
         
         void beginRun(edm::Run &run) override
         {
@@ -544,9 +547,11 @@ class HNLGun:
         static void fillDescriptions(edm::ConfigurationDescriptions& descriptions)
         {
             edm::ParameterSetDescription desc;
+            desc.setAllowAnything();
             descriptions.addDefault(desc);
         }
 };
 
 DEFINE_FWK_INPUT_SOURCE(HNLGun);
+
 
