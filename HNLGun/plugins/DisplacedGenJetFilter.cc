@@ -5,6 +5,7 @@
 // user include files
 
 #include "FWCore/ServiceRegistry/interface/Service.h"
+
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
@@ -15,11 +16,10 @@
 #include "FWCore/Framework/interface/ESHandle.h"
 #include "FWCore/Utilities/interface/Exception.h"
 
-#include "LLPReco/DataFormats/interface/DisplacedGenVertex.h"
-
 #include "SimGeneral/HepPDTRecord/interface/ParticleDataTable.h"
 #include "DataFormats/PatCandidates/interface/PackedGenParticle.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
+#include "DataFormats/JetReco/interface/GenJet.h"
 
 #include "DataFormats/Math/interface/deltaR.h"
 #include "DataFormats/Math/interface/angle.h"
@@ -28,6 +28,28 @@
 
 #include "TH2F.h"
 #include "TRandom3.h"
+
+namespace 
+{
+    //numpy.concatenate([numpy.linspace(10,20,3),numpy.logspace(math.log10(25),3,18)])
+	constexpr std::array<float,21> ptBins{{
+          10.        ,    15.        ,    20.        ,    25.        ,
+          31.05838232,    38.58492449,    47.93541347,    59.55185592,
+          73.98337237,    91.91215457,   114.18571346,   141.85694176,
+         176.23388528,   218.94157546,   271.99884626,   337.9137663 ,
+         419.8021978 ,   521.53508632,   647.92144416,   804.93567703,
+        1000.        
+	}};
+	
+	//numpy.logspace(-3,3,13)
+	constexpr std::array<float,13> displacementBins{{
+	    1.00000000e-03,   3.16227766e-03,   1.00000000e-02,
+        3.16227766e-02,   1.00000000e-01,   3.16227766e-01,
+        1.00000000e+00,   3.16227766e+00,   1.00000000e+01,
+        3.16227766e+01,   1.00000000e+02,   3.16227766e+02,
+        1.00000000e+03
+	}};
+}
 
 struct DisplacedVertex
 {
@@ -88,6 +110,7 @@ class DisplacedGenJetFilter:
         edm::EDGetTokenT<edm::View<reco::GenJet>> _genJetToken;
         
     	TRandom3 rng;
+    	
         TH2F ptDisplacementHist;
         std::vector<size_t> njets;
         
@@ -115,7 +138,11 @@ DisplacedGenJetFilter::DisplacedGenJetFilter(const edm::ParameterSet& iConfig):
     _genJetInputTag(iConfig.getParameter<edm::InputTag>("srcGenJets")),
     _genJetToken(consumes<edm::View<reco::GenJet>>(_genJetInputTag)), 
     rng(time(NULL)),
-    ptDisplacementHist("pt","",20,1,3,10,-3,3),
+    ptDisplacementHist(
+        "pt","",
+        ptBins.size()-1,ptBins.data(),
+        displacementBins.size()-1,displacementBins.data()
+    ),
     njets(10,0)
 {
 }
@@ -123,25 +150,31 @@ DisplacedGenJetFilter::DisplacedGenJetFilter(const edm::ParameterSet& iConfig):
 
 DisplacedGenJetFilter::~DisplacedGenJetFilter()
 {
+    for (int i = 0; i < 110; ++i) std::cout<<"=";
+    std::cout<<std::endl;
     std::cout<<"total jets: "<<ptDisplacementHist.GetEntries()<<std::endl;
     std::cout<<"max jets: "<<ptDisplacementHist.GetMaximum()<<std::endl;
 
     std::cout<<"           ";
     for (int dbin = 0; dbin < ptDisplacementHist.GetNbinsY(); ++dbin)
     {
-        printf("%5.1e ",std::pow(10.,ptDisplacementHist.GetYaxis()->GetBinCenter(dbin+1)));
+        printf("%7.1e ",ptDisplacementHist.GetYaxis()->GetBinCenter(dbin+1));
     }
     std::cout<<std::endl;
-    std::cout<<"--------------------------------------------------------"<<std::endl;
+    for (int i = 0; i < 110; ++i) std::cout<<"-";
+    std::cout<<std::endl;
     for (int ptbin = 0; ptbin < ptDisplacementHist.GetNbinsX(); ++ptbin)
     {
-        printf("pt=%5.1f: ",std::pow(10.,ptDisplacementHist.GetXaxis()->GetBinCenter(ptbin+1)));
+        printf("pt=%5.1f: ",ptDisplacementHist.GetXaxis()->GetBinCenter(ptbin+1));
         for (int dbin = 0; dbin < ptDisplacementHist.GetNbinsY(); ++dbin)
         {
-            printf("%5.0f ",ptDisplacementHist.GetBinContent(ptbin+1,dbin+1));
+            printf("%7.0f ",ptDisplacementHist.GetBinContent(ptbin+1,dbin+1));
         }
         std::cout<<std::endl;
     }
+    for (int i = 0; i < 110; ++i) std::cout<<"-";
+    std::cout<<std::endl;
+    
     for (size_t i = 0; i < njets.size(); ++i)
     {
         printf("%3i ",int(i));
@@ -152,13 +185,15 @@ DisplacedGenJetFilter::~DisplacedGenJetFilter()
         printf("%3i ",int(njets[i]));
     }
     std::cout<<std::endl;
+    for (int i = 0; i < 110; ++i) std::cout<<"=";
+    std::cout<<std::endl;
 }
 
 bool DisplacedGenJetFilter::acceptJet(double pt, double displacement)
 {
     //try to achieve uniform sampling in log(pt) and log(displacement)
-    int ptBin = ptDisplacementHist.GetXaxis()->FindBin(std::log10(pt));
-    int displacementBin = ptDisplacementHist.GetYaxis()->FindBin(std::log10(displacement));
+    int ptBin = ptDisplacementHist.GetXaxis()->FindBin(pt);
+    int displacementBin = ptDisplacementHist.GetYaxis()->FindBin(displacement);
     double binContent = ptDisplacementHist.GetBinContent(ptBin,displacementBin);
     double maximum = ptDisplacementHist.GetMaximum();
     if (ptDisplacementHist.GetEntries()!=0 and maximum<rng.Gaus(binContent+1,1))
@@ -170,7 +205,7 @@ bool DisplacedGenJetFilter::acceptJet(double pt, double displacement)
 
 void DisplacedGenJetFilter::fillJet(double pt, double displacement)
 {
-    ptDisplacementHist.Fill(std::log10(pt),std::log10(displacement));
+    ptDisplacementHist.Fill(pt,displacement);
 }
 
 
@@ -259,7 +294,7 @@ DisplacedGenJetFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     }
     
     //if (nacceptedJets<1) return false; 
-    if (nacceptedJets<(0.1+std::fabs(rng.Gaus(0.,0.5)))) return false;
+    if (nacceptedJets<(0.5+std::fabs(rng.Gaus(0.,0.5)))) return false;
     
     for (size_t i = 0; i < acceptedJetPts.size(); ++i)
     {
@@ -268,7 +303,6 @@ DisplacedGenJetFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     if (nacceptedJets<njets.size()) njets[nacceptedJets]+=1;
     
     return true;
-    
 }
 
 
