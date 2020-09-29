@@ -471,9 +471,9 @@ class HNLGun:
                     else if (llpDecayType<0.13) sucess = decayLL(displacedParticles,i,llp,0,0); //3% EE
                     else if (llpDecayType<0.18) sucess = decayLL(displacedParticles,i,llp,1,1); //5% MUMU
                     else if (llpDecayType<0.55) sucess = decayQQL(displacedParticles,i,llp,2); //37% QTau
-                    else if (llpDecayType<0.70) sucess = decayLL(displacedParticles,i,llp,2,0); //15% TAUE
-                    else if (llpDecayType<0.85) sucess = decayLL(displacedParticles,i,llp,2,1); //15% TAUMU
-                    else if (llpDecayType<1.00) sucess = decayLL(displacedParticles,i,llp,2,2); //15% TAUTAU
+                    else if (llpDecayType<0.65) sucess = decayLL(displacedParticles,i,llp,2,0); //10% TAUE
+                    else if (llpDecayType<0.75) sucess = decayLL(displacedParticles,i,llp,2,1); //10% TAUMU
+                    else if (llpDecayType<1.00) sucess = decayLL(displacedParticles,i,llp,2,2); //25% TAUTAU
                 }
                 while (not sucess);
             }
