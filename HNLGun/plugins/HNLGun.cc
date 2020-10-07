@@ -232,7 +232,7 @@ class HNLGun:
         explicit HNLGun(const edm::ParameterSet& iConfig,  const edm::InputSourceDescription& desc):
             edm::ProducerSourceBase(iConfig, desc, false),
             //source is not allowed to use the RandomNumberService so just create an engine
-            rngEngine_(new CLHEP::MTwistEngine(12345))//time(NULL)))
+            rngEngine_(new CLHEP::MTwistEngine(time(NULL)))
         {
 
 
@@ -389,13 +389,39 @@ class HNLGun:
 
             return true;
         }
+        
+        bool decayLnunu(std::vector<ParticleSystemPtr>& displacedParticles, int colorTag, ParticleSystemPtr llp, int leptonGeneration)
+        {
+
+            double leptonMass = leptonMasses[leptonGeneration];
+
+            if (2*(leptonMass)>llp->mass()) return false;
+
+            int leptonSign = CLHEP::RandFlat::shootInt(rngEngine_.get(),0,2)*2-1;
+
+            auto p1 = llp->add(ParticleSystem::create((leptonGeneration*2+11)*leptonSign,leptonMass));
+            displacedParticles.push_back(p1);
+
+            auto p2 = llp->add(ParticleSystem::create(-(leptonGeneration*2+11+1)*leptonSign));
+            displacedParticles.push_back(p2);
+
+            llp->add(ParticleSystem::create(12));
+
+            return true;
+        }
 
         LHEEventProduct* generate()
         {
-            double scale = std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.5,0.25));
+            int nHNL = CLHEP::RandFlat::shootInt(rngEngine_.get(),1,5);
+            int nNonLLP = 1+std::abs(CLHEP::RandGauss::shoot(rngEngine_.get(),0,2.5)); //need at least 1 non HNL; otherwise HNL pT = 0
+            //int nParticles = nHNL+nNonLLP;
 
+
+            double massLLP = CLHEP::RandFlat::shoot(rngEngine_.get(), 1., 5)+std::fabs(CLHEP::RandGauss::shoot(rngEngine_.get(),0.,10.)); //in GeV
+            double scale = std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.,0.25));
+            
             if (scale<60.) return nullptr;
-            if (scale>cme) return nullptr;
+            if (scale>(cme*0.9)) return nullptr;
 
             double pz = std::copysign(
                 std::min(cme/2.1,std::pow(10.,CLHEP::RandGauss::shoot(rngEngine_.get(),2.,0.75))),
@@ -410,12 +436,6 @@ class HNLGun:
             if (x1<1e-4 or x2<1e-4) return nullptr;
 
 
-            int nHNL = CLHEP::RandFlat::shootInt(rngEngine_.get(),1,4);
-            int nNonLLP = 1+std::abs(CLHEP::RandGauss::shoot(rngEngine_.get(),0,2.5)); //need at least 1 non HNL; otherwise HNL pT = 0
-            //int nParticles = nHNL+nNonLLP;
-
-
-            double massLLP = CLHEP::RandFlat::shoot(rngEngine_.get(), 1., 5)+std::fabs(CLHEP::RandGauss::shoot(rngEngine_.get(),0.,10.)); //in GeV
             double ctauLLP = std::pow(10.,CLHEP::RandFlat::shoot(rngEngine_.get(), -3., 5.)); //in mm
 
             if (scale<(massLLP*nHNL*1.1)) return nullptr;
@@ -466,14 +486,14 @@ class HNLGun:
 
                     if (llpDecayType<0.01) sucess = decayQQ(displacedParticles,i,llp); //1.% QQ
                     else if (llpDecayType<0.01) sucess = decayQQNu(displacedParticles,i,llp); //1.% QQnu
-                    else if (llpDecayType<0.05) sucess = decayQQL(displacedParticles,i,llp,0); //3% QE
-                    else if (llpDecayType<0.10) sucess = decayQQL(displacedParticles,i,llp,1); //5% QMu
-                    else if (llpDecayType<0.13) sucess = decayLL(displacedParticles,i,llp,0,0); //3% EE
-                    else if (llpDecayType<0.18) sucess = decayLL(displacedParticles,i,llp,1,1); //5% MUMU
-                    else if (llpDecayType<0.55) sucess = decayQQL(displacedParticles,i,llp,2); //37% QTau
-                    else if (llpDecayType<0.65) sucess = decayLL(displacedParticles,i,llp,2,0); //10% TAUE
-                    else if (llpDecayType<0.75) sucess = decayLL(displacedParticles,i,llp,2,1); //10% TAUMU
-                    else if (llpDecayType<1.00) sucess = decayLL(displacedParticles,i,llp,2,2); //25% TAUTAU
+                    else if (llpDecayType<0.06) sucess = decayQQL(displacedParticles,i,llp,0); //4% QE
+                    else if (llpDecayType<0.10) sucess = decayQQL(displacedParticles,i,llp,1); //4% QMu
+                    else if (llpDecayType<0.14) sucess = decayLL(displacedParticles,i,llp,0,0); //4% EE
+                    else if (llpDecayType<0.18) sucess = decayLL(displacedParticles,i,llp,1,1); //4% MUMU
+                    else if (llpDecayType<0.22) sucess = decayLnunu(displacedParticles,i,llp,0); //4% E
+                    else if (llpDecayType<0.24) sucess = decayLnunu(displacedParticles,i,llp,1); //4% MU
+                    else if (llpDecayType<0.54) sucess = decayQQL(displacedParticles,i,llp,2); //30% QTau
+                    else if (llpDecayType<1.00) sucess = decayLnunu(displacedParticles,i,llp,2); //46% TAU
                 }
                 while (not sucess);
             }
@@ -502,7 +522,9 @@ class HNLGun:
             int nInAcceptance = 0;
             for (const auto& particle: displacedParticles)
             {
-                if (std::fabs(particle->getP4().Eta())<2.4 and particle->getP4().Pt()>10.)
+                float minPt = CLHEP::RandGauss::shoot(rngEngine_.get(),10.,1.);
+                float minEta = CLHEP::RandGauss::shoot(rngEngine_.get(),2.4,0.1);
+                if (std::fabs(particle->getP4().Eta())<minEta and particle->getP4().Pt()>minPt)
                 {
                     nInAcceptance+=1;
                 }
