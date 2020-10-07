@@ -212,24 +212,26 @@ DisplacedGenJetFilter::~DisplacedGenJetFilter()
 
     for (int ptbin = 0; ptbin < ptDisplacementHist.GetNbinsX(); ++ptbin)
     {
-				for (int iclass = 1; iclass < 8; ++iclass)
-				{
-		        printf("pt=%5.1f, c=%1i: ",ptDisplacementHist.GetXaxis()->GetBinCenter(ptbin+1),iclass);
-		        for (int dbin = 0; dbin < ptDisplacementHist.GetNbinsY(); ++dbin)
-		        {
-		            printf("%7.0f ",ptDisplacementHist.GetBinContent(ptbin+1,dbin+1,iclass));
-		        }
-		        std::cout<<std::endl;
-				}
+        printf("pt=%5.1f: ",ptDisplacementHist.GetXaxis()->GetBinCenter(ptbin+1));
+        for (int dbin = 0; dbin < ptDisplacementHist.GetNbinsY(); ++dbin)
+        {
+            float sum = 0.;
+		    for (int iclass = 1; iclass < 8; ++iclass)
+		    {
+                sum += ptDisplacementHist.GetBinContent(ptbin+1,dbin+1,iclass);
+            }
+            printf("%7.0f ",sum);
+		}
+		std::cout<<std::endl;
     }
     for (int i = 0; i < 110; ++i) std::cout<<"-";
     std::cout<<std::endl;
 
-		for (int i = 0; i < projectedPtDisplacementHist->GetNbinsX(); ++i)
-		{
-				printf("c=%1i: %7.0f\n",i+1,projectedPtDisplacementHist->GetBinContent(i+1));
-		}
-		for (int i = 0; i < 110; ++i) std::cout<<"-";
+	for (int i = 0; i < projectedPtDisplacementHist->GetNbinsX(); ++i)
+	{
+			printf("c=%1i: %7.0f\n",i+1,projectedPtDisplacementHist->GetBinContent(i+1));
+	}
+	for (int i = 0; i < 110; ++i) std::cout<<"-";
     std::cout<<std::endl;
 
     for (size_t i = 0; i < njets.size(); ++i)
@@ -397,8 +399,8 @@ DisplacedGenJetFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
         }
     }
 
-    //if (nacceptedJets<1) return false;
-    if (nacceptedJets<(0.5+std::fabs(rng.Gaus(0.,1.5)))) return false;
+    if (nacceptedJets<1) return false;
+    if (nacceptedJets<(0.5+std::fabs(rng.Gaus(0.,1.)))) return false;
 
     for (size_t i = 0; i < acceptedJetPts.size(); ++i)
     {
