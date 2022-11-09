@@ -20,3 +20,6 @@
 <library name="DisplacedGenJetFilter" file="DisplacedGenJetFilter.cc">
     <flags EDM_PLUGIN="1"/>
 </library>
+<library name="GenLeptonPairFilter" file="GenLeptonPairFilter.cc">
+    <flags EDM_PLUGIN="1"/>
+</library>
