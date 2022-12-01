@@ -47,10 +47,9 @@ class GenLeptonPairFilter:
 		TRandom3 rng;
         bool filter(edm::Event& iEvent, const edm::EventSetup& iSetup) override;
         
-        std::vector<int> acceptedPerClass;
-        std::vector<int> totalPerClass;
+        std::unordered_map<int,int> acceptedPerClass;
+        std::unordered_map<int,int> totalPerClass;
         
-        std::vector<std::vector<int>> pdgIdComb;
 
     public:
         explicit GenLeptonPairFilter(const edm::ParameterSet&);
@@ -72,6 +71,29 @@ class GenLeptonPairFilter:
             }
             return nullptr;
         }
+        
+        float filterProb(int l1Id, int l2Id) const
+        {
+            if ((l1Id>=11 and l1Id<=16) and (l2Id==11 or l2Id==13)) return 0.01;
+            if ((l1Id==11 or l1Id==13) and (l2Id>=11 and l2Id<=16)) return 0.01;
+            
+            
+            if ((l1Id>=11 and l1Id<=16) and (l2Id==12 or l2Id==14 or l2Id==16)) return 0.002;
+            if ((l1Id==12 or l1Id==14 or l1Id==16) and (l2Id>=11 and l2Id<=16)) return 0.002;
+            
+            if ((l1Id>=11 and l1Id<=16) and l2Id==100) return 0.002;
+            if ((l1Id>=11 and l1Id<=16) and (l2Id==111 or l2Id==113)) return 0.1;
+            
+            if ((l1Id==100) and (l2Id==11 or l2Id==13)) return 0.01;
+            if ((l1Id==100) and (l2Id==12 or l2Id==14 or l2Id==16)) return 0.002;
+            
+            if ((l1Id==111 or l1Id==113) and (l2Id==11 or l2Id==13)) return 0.1;
+            if ((l1Id==111 or l1Id==113) and (l2Id==12 or l2Id==14 or l2Id==16)) return 0.02;
+            
+            if ((l1Id>=100) and l2Id==100) return 0.05;
+            
+            return 1.0;
+        }
 
 };
 
@@ -83,36 +105,34 @@ class GenLeptonPairFilter:
 GenLeptonPairFilter::GenLeptonPairFilter(const edm::ParameterSet& iConfig):
     _genParticleInputTag(iConfig.getParameter<edm::InputTag>("srcGenParticles")),
     _genParticleToken(consumes<edm::View<reco::GenParticle>>(_genParticleInputTag)),
-    rng(time(NULL)),
-    acceptedPerClass(8,0),
-    totalPerClass(8,0),
-    pdgIdComb(6,std::vector<int>(6,0))
+    rng(time(NULL))
 {
 }
 
 
 GenLeptonPairFilter::~GenLeptonPairFilter()
 {
+    std::vector<int> ids;
+    for (const auto& idPair: totalPerClass)
+    {
+        ids.push_back(idPair.first);
+    }
+    std::sort(ids.begin(), ids.end());
+    
+    int acceptedTotal = 0;
+    
+    
     std::cout<<"========== genlepton filter result ================"<<std::endl;
-    for (size_t i=0; i <totalPerClass.size();++i)
+    for (int id: ids)
     {
-        std::cout<<i<<": "<<acceptedPerClass[i]<<"/"<<totalPerClass[i]<<" ("<<(100.*acceptedPerClass[i]/totalPerClass[i])<<"%)"<<std::endl;
+        acceptedTotal+=acceptedPerClass[id];
+        printf("%9i: %5i/%5i = %6.2f%%\n",id,acceptedPerClass[id],totalPerClass[id],100.*acceptedPerClass[id]/totalPerClass[id]);
     }
-    std::cout<<"----------- total events per lepton FS ------------"<<std::endl;
-    printf("   ");
-    for (size_t i=0; i <pdgIdComb.size();++i)
+    std::cout<<"=========== fraction / total accepted ============="<<std::endl;
+    printf("Total accepted: %i\n",acceptedTotal);
+    for (int id: ids)
     {
-       printf(" %5lu",i+11);
-    }
-    printf("\n");
-    for (size_t i=0; i <pdgIdComb.size();++i)
-    {   
-        printf("%2lu:",i+11);
-        for (size_t j=0; j <pdgIdComb[i].size();++j)
-        {
-            printf(" %5i",pdgIdComb[i][j]);
-        }
-        printf("\n");
+        printf("%9i: %5i => %6.2f%%\n",id,acceptedPerClass[id],100.*acceptedPerClass[id]/acceptedTotal);
     }
     
     std::cout<<"==================================================="<<std::endl;
@@ -168,52 +188,68 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     int l1Id = abs(l1->pdgId());
     int l2Id = abs(l2->pdgId());
     
-    pdgIdComb[l1Id-11][l2Id-11] += 1;
     
-    //std::cout<<l1Id<<","<<l2Id<<std::endl;
-    
-    int classId = 0; //neutrino FS
-    if (l1Id==11 and l2Id==11) classId=1; //ee
-    if (l1Id==13 and l2Id==13) classId=2; //mumu
-    if (l1Id==15 and l2Id==15) classId=3; //tautau
-    if ((l1Id==11 and l2Id==13) or (l1Id==13 and l2Id==11)) classId=4; //emu
-    if ((l1Id==11 and l2Id==15) or (l1Id==15 and l2Id==11)) classId=5; //etau
-    if ((l1Id==15 and l2Id==13) or (l1Id==13 and l2Id==15)) classId=6; //mutau
-    
-    //std::cout<<l1Id;
-    
+
     if (l1Id==15)
     {
-        l1 = findLeptonFromTau(l1);
-        //if (l1) std::cout<<"->"<<abs(l1->pdgId());
-        if (not l1) classId = 7; //hadronic tau
+        auto l1TauDecay = findLeptonFromTau(l1);
+        if (not l1TauDecay) 
+        {
+            l1Id=100; //hadronic tau
+        }
+        else 
+        {
+            l1 = l1TauDecay;
+            l1Id=100+abs(l1->pdgId());
+        }
     }
-    //std::cout<<", "<<l2Id;
     if (l2Id==15)
     {
-        l2 = findLeptonFromTau(l2);
-        //if (l2) std::cout<<"->"<<abs(l2->pdgId());
-        if (not l2) classId = 7; //hadronic tau
+        auto l2TauDecay = findLeptonFromTau(l2);
+        if (not l2TauDecay) 
+        {
+            l2Id=100; //hadronic tau
+        }
+        else 
+        {
+            l2 = l2TauDecay;
+            l2Id=100+abs(l2->pdgId());
+        }
     }
-    //std::cout<<std::endl;
 
-    totalPerClass[classId]+=1;
+    totalPerClass[l1Id*1000+l2Id]+=1;
     
-    float maxPt = std::max<float>(l1?l1->pt():0.f,l2?l2->pt():0.f);
-    if (maxPt<20.) return false;
-    
-    int minClass =  std::distance(acceptedPerClass.begin(), std::min_element(acceptedPerClass.begin(),acceptedPerClass.end()));
-    
-    
-    if (acceptedPerClass[classId]<=(acceptedPerClass[minClass]+2))
+    float lMaxPt = 0.f;
+    //int lMaxId = 0;
+    //int lMax = 0;
+    //l1 is e or mu
+    if (l1Id==11 or l1Id==13 or l1Id==111 or l1Id==113)
     {
-        acceptedPerClass[classId]+=1;
-        return true;
+        //lMaxId=l1Id;
+        //lMax = 1;
+        lMaxPt = l1->pt();
+        //l2 is e or mu; take pT max of l1/l2
+        if ((l2Id==11 or l2Id==13 or l2Id==111 or l2Id==113) and l1->pt()<l2->pt())
+        {
+            //lMax = 2;
+            //lMaxId=l2Id;
+            lMaxPt = l2->pt();
+        }
+    }
+    //no l1; only l2 is e or mu
+    else if (l2Id==11 or l2Id==13 or l2Id==111 or l2Id==113)
+    {
+        //lMax = 2;
+        //lMaxId=l2Id;
+        lMaxPt = l2->pt();
     }
     
     
+    if (lMaxPt<20.) return false;
+    if (rng.Uniform()>filterProb(l1Id,l2Id)) return false;
     
-    return false;
+    acceptedPerClass[l1Id*1000+l2Id]+=1;
+    return true;
 }
 
 
