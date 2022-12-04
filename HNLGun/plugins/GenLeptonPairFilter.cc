@@ -72,27 +72,35 @@ class GenLeptonPairFilter:
             return nullptr;
         }
         
-        float filterProb(int l1Id, int l2Id) const
+        float filterProb(int l1Id, int l2Id, float leadingPt, float trailingPt) const
         {
-            if ((l1Id>=11 and l1Id<=16) and (l2Id==11 or l2Id==13)) return 0.01;
-            if ((l1Id==11 or l1Id==13) and (l2Id>=11 and l2Id<=16)) return 0.01;
+            //return 1.0;
             
+            if ((l1Id==11 or l1Id==13) and (l2Id==11 or l2Id==13) and trailingPt>2.) return 0.01;
             
+            if ((l1Id==11 or l1Id==13) and (l2Id==111 or l2Id==113) and trailingPt>2.) return 0.05;
+            if ((l1Id==111 or l1Id==113) and (l2Id==11 or l2Id==13) and trailingPt>2.) return 0.1;
+            
+            if ((l1Id==111 or l1Id==113) and (l2Id==111 or l2Id==113) and trailingPt>2.) return 1.0;
+            
+            return 0.002;
+            
+            /*
             if ((l1Id>=11 and l1Id<=16) and (l2Id==12 or l2Id==14 or l2Id==16)) return 0.002;
             if ((l1Id==12 or l1Id==14 or l1Id==16) and (l2Id>=11 and l2Id<=16)) return 0.002;
             
             if ((l1Id>=11 and l1Id<=16) and l2Id==100) return 0.002;
-            if ((l1Id>=11 and l1Id<=16) and (l2Id==111 or l2Id==113)) return 0.1;
+            
             
             if ((l1Id==100) and (l2Id==11 or l2Id==13)) return 0.01;
             if ((l1Id==100) and (l2Id==12 or l2Id==14 or l2Id==16)) return 0.002;
             
-            if ((l1Id==111 or l1Id==113) and (l2Id==11 or l2Id==13)) return 0.1;
+            
             if ((l1Id==111 or l1Id==113) and (l2Id==12 or l2Id==14 or l2Id==16)) return 0.02;
             
             if ((l1Id>=100) and l2Id==100) return 0.05;
+            */
             
-            return 1.0;
         }
 
 };
@@ -219,7 +227,8 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 
     totalPerClass[l1Id*1000+l2Id]+=1;
     
-    float lMaxPt = 0.f;
+    float leadingPt = 0.f;
+    float trailingPt = 0.f; 
     //int lMaxId = 0;
     //int lMax = 0;
     //l1 is e or mu
@@ -227,13 +236,23 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     {
         //lMaxId=l1Id;
         //lMax = 1;
-        lMaxPt = l1->pt();
+        leadingPt = l1->pt();
         //l2 is e or mu; take pT max of l1/l2
-        if ((l2Id==11 or l2Id==13 or l2Id==111 or l2Id==113) and l1->pt()<l2->pt())
+        if (l2Id==11 or l2Id==13 or l2Id==111 or l2Id==113)
         {
             //lMax = 2;
             //lMaxId=l2Id;
-            lMaxPt = l2->pt();
+            
+            if (l1->pt()<l2->pt())
+            {
+                leadingPt = l2->pt();
+                trailingPt = l1->pt();
+            }
+            else
+            {
+                leadingPt = l1->pt();
+                trailingPt = l2->pt();
+            }
         }
     }
     //no l1; only l2 is e or mu
@@ -241,12 +260,13 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     {
         //lMax = 2;
         //lMaxId=l2Id;
-        lMaxPt = l2->pt();
+        leadingPt = l2->pt();
     }
     
+ 
+    if (leadingPt<20.) return false;
     
-    if (lMaxPt<20.) return false;
-    if (rng.Uniform()>filterProb(l1Id,l2Id)) return false;
+    if (rng.Uniform()>filterProb(l1Id,l2Id,leadingPt,trailingPt)) return false;
     
     acceptedPerClass[l1Id*1000+l2Id]+=1;
     return true;
