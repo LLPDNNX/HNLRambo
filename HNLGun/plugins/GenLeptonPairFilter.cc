@@ -43,6 +43,9 @@ class GenLeptonPairFilter:
     private:
         edm::InputTag _genParticleInputTag;
         edm::EDGetTokenT<edm::View<reco::GenParticle>> _genParticleToken;
+        
+        edm::InputTag _genJetInputTag;
+        edm::EDGetTokenT<edm::View<reco::GenJet>> _genJetToken;
 
 		TRandom3 rng;
         bool filter(edm::Event& iEvent, const edm::EventSetup& iSetup) override;
@@ -113,6 +116,8 @@ class GenLeptonPairFilter:
 GenLeptonPairFilter::GenLeptonPairFilter(const edm::ParameterSet& iConfig):
     _genParticleInputTag(iConfig.getParameter<edm::InputTag>("srcGenParticles")),
     _genParticleToken(consumes<edm::View<reco::GenParticle>>(_genParticleInputTag)),
+    _genJetInputTag(iConfig.getParameter<edm::InputTag>("srcGenJets")),
+    _genJetToken(consumes<edm::View<reco::GenJet>>(_genJetInputTag)),
     rng(time(NULL))
 {
 }
@@ -155,6 +160,9 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
     edm::Handle<edm::View<reco::GenParticle>> genParticleCollection;
     iEvent.getByToken(_genParticleToken, genParticleCollection);
+    
+    edm::Handle<edm::View<reco::GenJet>> genJetCollection;
+    iEvent.getByToken(_genJetToken, genJetCollection);
 
     const reco::GenParticle* l1 = nullptr;
     const reco::GenParticle* l2 = nullptr;
@@ -263,8 +271,13 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
         leadingPt = l2->pt();
     }
     
+    //if (genJetCollection->size()==0) return false;
+    //if (genJetCollection->at(0).pt()<15.) return false;
+
+    
  
     if (leadingPt<20.) return false;
+    //if (trailingPt<-1.) return false;
     
     if (rng.Uniform()>filterProb(l1Id,l2Id,leadingPt,trailingPt)) return false;
     
