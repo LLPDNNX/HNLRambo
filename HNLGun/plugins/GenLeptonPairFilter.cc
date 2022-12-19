@@ -46,6 +46,8 @@ class GenLeptonPairFilter:
         
         edm::InputTag _genJetInputTag;
         edm::EDGetTokenT<edm::View<reco::GenJet>> _genJetToken;
+        
+        int _ntaus;
 
 		TRandom3 rng;
         bool filter(edm::Event& iEvent, const edm::EventSetup& iSetup) override;
@@ -118,6 +120,7 @@ GenLeptonPairFilter::GenLeptonPairFilter(const edm::ParameterSet& iConfig):
     _genParticleToken(consumes<edm::View<reco::GenParticle>>(_genParticleInputTag)),
     _genJetInputTag(iConfig.getParameter<edm::InputTag>("srcGenJets")),
     _genJetToken(consumes<edm::View<reco::GenJet>>(_genJetInputTag)),
+    _ntaus(iConfig.getParameter<int>("nTaus")),
     rng(time(NULL))
 {
 }
@@ -132,17 +135,19 @@ GenLeptonPairFilter::~GenLeptonPairFilter()
     }
     std::sort(ids.begin(), ids.end());
     
+    int total = 0;
     int acceptedTotal = 0;
     
     
     std::cout<<"========== genlepton filter result ================"<<std::endl;
     for (int id: ids)
     {
+        total+=totalPerClass[id];
         acceptedTotal+=acceptedPerClass[id];
         printf("%9i: %5i/%5i = %6.2f%%\n",id,acceptedPerClass[id],totalPerClass[id],100.*acceptedPerClass[id]/totalPerClass[id]);
     }
     std::cout<<"=========== fraction / total accepted ============="<<std::endl;
-    printf("Total accepted: %i\n",acceptedTotal);
+    printf("Total accepted: %i/%i => %6.2f%%\n",acceptedTotal,total,100.*acceptedTotal/total);
     for (int id: ids)
     {
         printf("%9i: %5i => %6.2f%%\n",id,acceptedPerClass[id],100.*acceptedPerClass[id]/acceptedTotal);
@@ -166,12 +171,19 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 
     const reco::GenParticle* l1 = nullptr;
     const reco::GenParticle* l2 = nullptr;
+    
+    std::vector<const reco::GenParticle*> leptons;
 
     for (const auto& genParticle: *genParticleCollection)
     {
+        int absId = abs(genParticle.pdgId());
+        if (genParticle.status()==1 and (absId==11 or absId==13))
+        {
+            leptons.push_back(&genParticle);
+        }
         if (genParticle.isHardProcess())
         {
-            int absId = abs(genParticle.pdgId());
+
             if (absId>=11 and absId<=16)
             {
                 int motherId = abs(genParticle.mother(0)->pdgId());
@@ -189,6 +201,7 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
         }
     }
     
+    //std::cout<<"nleptons: "<<leptons.size()<<std::endl;
     
     if (not l1)
     {
@@ -204,10 +217,11 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     int l1Id = abs(l1->pdgId());
     int l2Id = abs(l2->pdgId());
     
-    
+    int taus = 0;
 
     if (l1Id==15)
     {
+        taus+=1;
         auto l1TauDecay = findLeptonFromTau(l1);
         if (not l1TauDecay) 
         {
@@ -221,6 +235,7 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     }
     if (l2Id==15)
     {
+        taus+=1;
         auto l2TauDecay = findLeptonFromTau(l2);
         if (not l2TauDecay) 
         {
@@ -240,6 +255,7 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     //int lMaxId = 0;
     //int lMax = 0;
     //l1 is e or mu
+    
     if (l1Id==11 or l1Id==13 or l1Id==111 or l1Id==113)
     {
         //lMaxId=l1Id;
@@ -275,11 +291,28 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     //if (genJetCollection->at(0).pt()<15.) return false;
 
     
- 
-    if (leadingPt<20.) return false;
-    //if (trailingPt<-1.) return false;
     
-    if (rng.Uniform()>filterProb(l1Id,l2Id,leadingPt,trailingPt)) return false;
+    if (leadingPt<-1.) return false;
+    if (trailingPt<-1.) return false;
+    
+    
+    std::sort(leptons.begin(),leptons.end(),[](const reco::GenParticle* p1, const reco::GenParticle* p2) {
+        return p1->pt()>p2->pt();
+    });
+    
+    if (leptons.size()<2) return false;
+    if (leptons[0]->pt()<20.) return false;
+    if (leptons[1]->pt()<2.) return false;
+    /*
+    if (leptons.size()>=2)
+    {
+        std::cout<<leptons[0]->pt()<<", "<<leptons[1]->pt()<<std::endl;
+    }*/
+    
+    
+    if (_ntaus>=0 and (taus!=_ntaus)) return false;
+    
+    //if (rng.Uniform()>filterProb(l1Id,l2Id,leadingPt,trailingPt)) return false;
     
     acceptedPerClass[l1Id*1000+l2Id]+=1;
     return true;
