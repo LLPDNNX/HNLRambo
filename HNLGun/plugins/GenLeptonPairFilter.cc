@@ -301,8 +301,8 @@ GenLeptonPairFilter::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     });
     
     if (leptons.size()<2) return false;
-    if (leptons[0]->pt()<20.) return false;
-    if (leptons[1]->pt()<2.) return false;
+    if (leptons[0]->pt()<24.) return false;
+    if (leptons[1]->pt()<1.) return false;
     /*
     if (leptons.size()>=2)
     {
